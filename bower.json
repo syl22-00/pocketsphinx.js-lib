@@ -1,0 +1,21 @@
+{
+  "name": "pocketsphinx.js-lib",
+  "version": "0.1.0",
+  "authors": [
+    "Sylvain Chevalier <sylvain.chevalier@gmail.com>"
+  ],
+  "description": "Speech recognizer in JavaScript",
+  "main": ["pocketsphinx.js", "audioRecorder.js", "audioRecorderWorker.js", "callbackManager.js", "recognizer.js", "README.md"],
+  "keywords": [
+    "speech recognition",
+    "pocketsphinx.js"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
+}
