@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>PocketSphinx.js</title>
+  </head>
+  <body>
+    <h2>PocketSphinx.js template</h2>
+    <ul>
+      <li>This application works on recent versions of Chrome and Firefox with the Web Audio API.</li>
+      <li>Press "Start" and speak</li>
+    </ul>
+    <select id="grammars"></select>
+    <button id="startBtn">Start</button>
+    <button id="stopBtn">Stop</button>
+    <span id="recording-indicator" style="border-radius: 10px; -moz-border-radius: 10px; -webkit-border-radius: 10px; width: 20px; height: 20px; background: red;"></span>
+    <h2>Recognition Output</h2>
+    <div id="output" style="height:150px;overflow:auto;" >
+    </div>
+    <h2>Status</h2>
+    <div id="current-status">Loading page</div>
+
+    <script>
+      ///////////////////////////////////////////////////////////////
+      // Set these values depending on acoustic and language models
+      // you want to use
+      // These default values are for pocketsphinx.js-en_US-hub4wsj_sc_8k
+      // with grammars
+      //////////////////////////////////////////////////////////////
+      // recording sample rate for your acoustic model, usually 16000
+      // or 8000
+      var outputSampleRate = 8000;
+      // Name of your acoustic model
+      var acousticModel = "hub4wsj_sc_8k";
+      // Where to find the acoustic model (the repository name)
+      var amFolder = "pocketsphinx.js-en_US-hub4wsj_sc_8k";
+      // Name of your dictionary, if you use one
+      var dictionary = undefined;
+      // Name of your statistical language model, if you use one
+      var languageModel = undefined;
+      // Whether we want to use grammars, defined below
+      var grammars = true;
+      ///////////////////////////////////////////////////////////////
+
+
+
+
+       // This is the list of words that need to be added to the recognizer
+       // This follows the CMU dictionary format
+      var wordList = [["ONE", "W AH N"], ["TWO", "T UW"], ["THREE", "TH R IY"], ["FOUR", "F AO R"]];
+      // This grammar recognizes ONE and TWO
+      var grammar1 = {numStates: 1, start: 0, end: 0, transitions: [{from: 0, to: 0, word: "ONE"},{from: 0, to: 0, word: "TWO"}]};
+      // This grammar recognizes THREE and FOUR
+      var grammar2 = {numStates: 1, start: 0, end: 0, transitions: [{from: 0, to: 0, word: "THREE"}, {from: 0, to: 0, word: "FOUR"}]};
+      // This is to fill in the drop-down menu
+      var grammars = [{title: "Grammar 1", g: grammar1}, {title: "Grammar 2", g: grammar2}];
+      var grammarIds = [];
+
+      // These will be initialized later
+      var recognizer, recorder, callbackManager, audioContext, outputContainer;
+      // Only when both recorder and recognizer are ready do we have a ready application
+      var recorderReady = recognizerReady = false;
+
+      // A convenience function to post a message to the recognizer and associate
+      // a callback to its response
+      function postRecognizerJob(message, callback) {
+        var msg = message || {};
+        if (callbackManager) msg.callbackId = callbackManager.add(callback);
+        if (recognizer) recognizer.postMessage(msg);
+      };
+
+      // This function initializes an instance of the recorder
+      // it posts a message right away and calls onReady when it
+      // is ready so that onmessage can be properly set
+      //
+      // We use this because we want to know when the whole library
+      // is downloaded and ready.
+      function spawnWorker(workerURL, onReady) {
+          recognizer = new Worker(workerURL);
+          recognizer.onmessage = function(event) {
+            onReady(recognizer);
+          };
+          recognizer.postMessage('');
+      };
+
+      // To display the hypothesis sent by the recognizer
+      function updateHyp(hyp) {
+        if (outputContainer) outputContainer.innerHTML = hyp;
+      };
+
+      // This updates the UI when the app becomes ready
+      // Only when both recorder and recognizer are ready do we enable the buttons
+      function updateUI() {
+        if (recorderReady && recognizerReady) startBtn.disabled = stopBtn.disabled = false;
+      };
+
+      // This is just a logging window where we display the status
+      function updateStatus(newStatus) {
+        document.getElementById('current-status').innerHTML += "<br/>" + newStatus;
+      };
+
+      // A not-so-great recording indicator
+      function displayRecording(display) {
+        if (display) document.getElementById('recording-indicator').innerHTML = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+        else document.getElementById('recording-indicator').innerHTML = "";
+      };
+
+      // Callback function once the user authorises access to the microphone
+      // in it, we instanciate the recorder
+      function startUserMedia(stream) {
+        // This is where magic happens, we can now get the audio samples
+        // from getUserMedia
+        var input = audioContext.createMediaStreamSource(stream);
+        // Firefox hack https://support.mozilla.org/en-US/questions/984179
+        window.firefox_audio_hack = input; 
+        var audioRecorderConfig = {
+            outputSampleRate: outputSampleRate,
+            worker: "bower_components/pocketsphinx.js-lib/audioRecorderWorker.js",
+            errorCallback: function(x) {updateStatus("Error from recorder: " + x);}};
+        recorder = new AudioRecorder(input, audioRecorderConfig);
+        // If a recognizer is ready, we pass it to the recorder
+        if (recognizer) recorder.consumers = [recognizer];
+        recorderReady = true;
+        updateUI();
+        updateStatus("Audio recorder ready");
+      };
+
+      // This starts recording. We first need to get the id of the grammar to use
+      var startRecording = function() {
+        var id = undefined;
+        if (grammars)
+            var id = document.getElementById('grammars').value;
+        if (recorder && recorder.start(id)) displayRecording(true);
+      };
+
+      // Stops recording
+      var stopRecording = function() {
+        recorder && recorder.stop();
+        displayRecording(false);
+      };
+
+      // Called once the recognizer is ready
+      // We then add the grammars to the input select tag and update the UI
+      var recognizerReady = function() {
+           if (grammars)
+               updateGrammars();
+           recognizerReady = true;
+           updateUI();
+           updateStatus("Recognizer ready");
+      };
+
+      // We get the grammars defined below and fill in the input select tag
+      var updateGrammars = function() {
+        var selectTag = document.getElementById('grammars');
+        for (var i = 0 ; i < grammarIds.length ; i++) {
+            var newElt = document.createElement('option');
+            newElt.value=grammarIds[i].id;
+            newElt.innerHTML = grammarIds[i].title;
+            selectTag.appendChild(newElt);
+        }                          
+      };
+
+      // In case we use grammars
+      // This adds a grammar from the grammars array
+      // We add them one by one and call it again as
+      // a callback.
+      // Once we are done adding all grammars, we can call
+      // recognizerReady()
+      var feedGrammar = function(g, index, id) {
+        if (id && (grammarIds.length > 0)) grammarIds[0].id = id.id;
+        if (index < g.length) {
+          grammarIds.unshift({title: g[index].title})
+	  postRecognizerJob({command: 'addGrammar', data: g[index].g},
+                             function(id) {feedGrammar(grammars, index + 1, {id:id});});
+        } else {
+          recognizerReady();
+        }
+      };
+      // In case we use grammars, and add dictionary words at runtime
+      // This adds words to the recognizer. When it calls back, we add grammars
+      var feedWords = function(words) {
+           postRecognizerJob({command: 'addWords', data: words},
+                        function() {feedGrammar(grammars, 0);});
+      };
+
+      // This initializes the recognizer. When it calls back, we add words
+      var initRecognizer = function() {
+          // You can pass parameters to the recognizer, such as : {command: 'initialize', data: [["-hmm", "my_model"], ["-fwdflat", "no"]]}
+          postRecognizerJob({command: 'initialize', data: [["-hmm", acousticModel]]},
+                            function() {
+                                        if (recorder) recorder.consumers = [recognizer];
+                                        if (grammars) feedWords(wordList);
+                                        else recognizerReady();
+                                        });
+      };
+
+      var loadModels = function() {
+          console.log("Entering loadModels");
+          postRecognizerJob({command: 'load', data: ["feat.params.js", "mdef.js", "means.js", "noisedict.js", "sendump.js", "transition_matrices.js", "variances.js"].map(function(x) {return "../" + amFolder + "/" + x;})}, initRecognizer);
+      };
+
+      // When the page is loaded, we spawn a new recognizer worker and call getUserMedia to
+      // request access to the microphone
+      window.onload = function() {
+        outputContainer = document.getElementById("output");
+        updateStatus("Initializing web audio and speech recognizer, waiting for approval to access the microphone");
+        callbackManager = new CallbackManager();
+        spawnWorker("bower_components/pocketsphinx.js-lib/recognizer.js", function(worker) {
+            // This is the onmessage function, once the worker is fully loaded
+            worker.onmessage = function(e) {
+                // This is the case when we have a callback id to be called
+                if (e.data.hasOwnProperty('id')) {
+                  var clb = callbackManager.get(e.data['id']);
+                  var data = {};
+                  if ( e.data.hasOwnProperty('data')) data = e.data.data;
+                  if(clb) clb(data);
+                }
+                // This is a case when the recognizer has a new hypothesis
+                if (e.data.hasOwnProperty('hyp')) {
+                  var newHyp = e.data.hyp;
+                  if (e.data.hasOwnProperty('final') &&  e.data.final) newHyp = "Final: " + newHyp;
+                  updateHyp(newHyp);
+                }
+                // This is the case when we have an error
+                if (e.data.hasOwnProperty('status') && (e.data.status == "error")) {
+                  updateStatus("Error in " + e.data.command + " with code " + e.data.code);
+                }
+            };
+            // Once the worker is fully loaded, we can call the initialize function
+            loadModels();
+        });
+
+        // The following is to initialize Web Audio
+        try {
+          window.AudioContext = window.AudioContext || window.webkitAudioContext;
+          navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+          window.URL = window.URL || window.webkitURL;
+          audioContext = new AudioContext();
+        } catch (e) {
+          updateStatus("Error initializing Web Audio browser");
+        }
+        if (navigator.getUserMedia) navigator.getUserMedia({audio: true}, startUserMedia, function(e) {
+                                        updateStatus("No live audio input in this browser");
+                                    });
+        else updateStatus("No web audio support in this browser");
+
+      // Wiring JavaScript to the UI
+      var startBtn = document.getElementById('startBtn');
+      var stopBtn = document.getElementById('stopBtn');
+      startBtn.disabled = true;
+      stopBtn.disabled = true;
+      startBtn.onclick = startRecording;
+      stopBtn.onclick = stopRecording;
+      };
+
+
+    </script>
+    <!-- These are the two JavaScript files you must load in the HTML,
+    The recognizer is loaded through a Web Worker -->
+    <script src="bower_components/pocketsphinx.js-lib/audioRecorder.js"></script>
+    <script src="bower_components/pocketsphinx.js-lib/callbackManager.js"></script>
+  </body>
+</html>
