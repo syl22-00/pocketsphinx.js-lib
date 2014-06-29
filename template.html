@@ -10,6 +10,7 @@
       <li>This application works on recent versions of Chrome and Firefox with the Web Audio API.</li>
       <li>Press "Start" and speak</li>
     </ul>
+    If using grammars, select one: 
     <select id="grammars"></select>
     <button id="startBtn">Start</button>
     <button id="stopBtn">Stop</button>
@@ -24,36 +25,52 @@
       ///////////////////////////////////////////////////////////////
       // Set these values depending on acoustic and language models
       // you want to use
-      // These default values are for pocketsphinx.js-en_US-hub4wsj_sc_8k
+      // These default values are for pocketsphinx.js-en_US-rm1_200
       // with grammars
       //////////////////////////////////////////////////////////////
       // recording sample rate for your acoustic model, usually 16000
       // or 8000
-      var outputSampleRate = 8000;
+      var outputSampleRate = 16000;
       // Name of your acoustic model
-      var acousticModel = "hub4wsj_sc_8k";
+      var acousticModel = "rm1_200";
+      // var acousticModel = "hub4wsj_sc_8k";
+      // var acousticModel = "tdt_sc_8k";
       // Where to find the acoustic model (the repository name)
-      var amFolder = "pocketsphinx.js-en_US-hub4wsj_sc_8k";
+      var amFolder = "pocketsphinx.js-en_US-rm1_200";
+      // var amFolder = "pocketsphinx.js-zh-tdt_sc_8k";
       // Name of your dictionary, if you use one
-      var dictionary = undefined;
+      var dictionary;
+      // var dictionary = "en_US/hub4.5000.dic"; // the dictionary name
+      // var dictionaryFile = "../pocketsphinx.js-en_US-hub4.5000.dic/hub4.5000.dic.js";  // the dictionary JS file name, should start with "../"
+      // var dictionary = "zh_CN/mandarin_notone.dic"; // the dictionary name
+      // var dictionaryFile = "../pocketsphinx.js-zh_CN-mandarin_notone.dic/mandarin_notone.dic.js";  // the dictionary JS file name, should start with "../"
       // Name of your statistical language model, if you use one
-      var languageModel = undefined;
-      // Whether we want to use grammars, defined below
-      var grammars = true;
+      var languageModel;
+      // var languageModel = "en_US/wsj0vp.5000.DMP"; // the model name
+      // var languageModelFile = "../pocketsphinx.js-en_US-wsj0vp.5000.DMP/wsj0vp.5000.DMP.js"; // the model JS file name, should start with "../"
+      // var languageModel = "en_US/hub4.5000.DMP"; // the model name
+      // var languageModelFile = "../pocketsphinx.js-en_US-hub4.5000.DMP/hub4.5000.DMP.js"; // the model JS file name, should start with "../"
+      // var languageModel = "zh_CN/gigatdt.5000.DMP"; // the model name
+      // var languageModelFile = "../pocketsphinx.js-zh_CN-gigatdt.5000.DMP/gigatdt.5000.DMP.js"; // the model JS file name, should start with "../"
+      // You should not need to change that, unless you use special types of acoustic models, such as one with an adaptation matrix
+      var amFiles = ["feat.params.js", "mdef.js", "means.js", "noisedict.js", "sendump.js", "transition_matrices.js", "variances.js"];
       ///////////////////////////////////////////////////////////////
 
 
 
-
-       // This is the list of words that need to be added to the recognizer
-       // This follows the CMU dictionary format
+      // This section is for the case of use of grammars
+      // and runtime-added dictionary words
+      // This is the list of words that need to be added to the recognizer
+      // This follows the CMU dictionary format
       var wordList = [["ONE", "W AH N"], ["TWO", "T UW"], ["THREE", "TH R IY"], ["FOUR", "F AO R"]];
       // This grammar recognizes ONE and TWO
       var grammar1 = {numStates: 1, start: 0, end: 0, transitions: [{from: 0, to: 0, word: "ONE"},{from: 0, to: 0, word: "TWO"}]};
       // This grammar recognizes THREE and FOUR
       var grammar2 = {numStates: 1, start: 0, end: 0, transitions: [{from: 0, to: 0, word: "THREE"}, {from: 0, to: 0, word: "FOUR"}]};
       // This is to fill in the drop-down menu
+      // set it to undefined if you want to load a language model file
       var grammars = [{title: "Grammar 1", g: grammar1}, {title: "Grammar 2", g: grammar2}];
+      // var grammars = undefined;
       var grammarIds = [];
 
       // These will be initialized later
@@ -185,7 +202,10 @@
       // This initializes the recognizer. When it calls back, we add words
       var initRecognizer = function() {
           // You can pass parameters to the recognizer, such as : {command: 'initialize', data: [["-hmm", "my_model"], ["-fwdflat", "no"]]}
-          postRecognizerJob({command: 'initialize', data: [["-hmm", acousticModel]]},
+          var data = [["-hmm", acousticModel]];
+          if (dictionary) data.push(["-dict", dictionary]);
+          if (languageModel) data.push(["-lm", languageModel]);
+          postRecognizerJob({command: 'initialize', data: data},
                             function() {
                                         if (recorder) recorder.consumers = [recognizer];
                                         if (grammars) feedWords(wordList);
@@ -194,8 +214,10 @@
       };
 
       var loadModels = function() {
-          console.log("Entering loadModels");
-          postRecognizerJob({command: 'load', data: ["feat.params.js", "mdef.js", "means.js", "noisedict.js", "sendump.js", "transition_matrices.js", "variances.js"].map(function(x) {return "../" + amFolder + "/" + x;})}, initRecognizer);
+          var data = amFiles.map(function(x) {return "../" + amFolder + "/" + x;});
+          if (dictionary) data.push(dictionaryFile);
+          if (languageModel) data.push(languageModelFile);
+          postRecognizerJob({command: 'load', data: data}, initRecognizer);
       };
 
       // When the page is loaded, we spawn a new recognizer worker and call getUserMedia to
